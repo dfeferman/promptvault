@@ -15,6 +15,7 @@ interface GroupBoardProps {
   onReorderGroups: (items: Array<{ uuid: string; display_order: number }>) => Promise<void>;
   onCreatePrompt: (group_uuid: string) => void;
   onEditPrompt: (prompt: ManagementPrompt) => void;
+  onUpdatePrompt: (uuid: string, payload: { group_uuid: string }) => Promise<void>;
   onDeletePrompt: (uuid: string) => Promise<void>;
   onReorderPrompts: (group_uuid: string, items: Array<{ uuid: string; display_order: number }>) => Promise<void>;
   onCopyPrompt: (content: string) => Promise<void>;
@@ -34,6 +35,7 @@ export const GroupBoard: React.FC<GroupBoardProps> = ({
   onReorderGroups,
   onCreatePrompt,
   onEditPrompt,
+  onUpdatePrompt,
   onDeletePrompt,
   onReorderPrompts,
   onCopyPrompt,

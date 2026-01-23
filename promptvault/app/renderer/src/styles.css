@@ -813,7 +813,9 @@ body {
 }
 
 .group-column.dragging {
-  opacity: 0.5;
+  /* Opacity entfernt - kein Verblassen mehr */
+  transform: scale(0.98);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 .group-column-header {
@@ -908,6 +910,7 @@ body {
   padding: 12px;
   cursor: pointer;
   transition: all 0.2s;
+  position: relative;
 }
 
 .prompt-card:hover {
@@ -921,7 +924,12 @@ body {
 }
 
 .prompt-card.dragging {
-  opacity: 0.5;
+  /* Opacity entfernt - kein Verblassen mehr */
+  transform: scale(0.95);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-color: #3498db;
+  z-index: 10;
+  position: relative;
 }
 
 .prompt-card-header {

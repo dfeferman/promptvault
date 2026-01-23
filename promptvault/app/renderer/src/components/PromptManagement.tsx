@@ -41,6 +41,7 @@ export const PromptManagement: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState<boolean>(false);
   const [creatingPrompt, setCreatingPrompt] = useState<string | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<ManagementPrompt | null>(null);
   const [editingResult, setEditingResult] = useState<PromptResult | null>(null);
@@ -413,16 +414,9 @@ export const PromptManagement: React.FC = () => {
               promptsByGroup={promptsByGroup}
               selectedPromptUuid={selectedPromptUuid}
               onSelectPrompt={(uuid) => setSelectedPromptUuid(uuid)}
-              onCreateGroup={async () => {
+              onCreateGroup={() => {
                 if (selectedCategoryUuid) {
-                  try {
-                    await handleCreateGroup({
-                      category_uuid: selectedCategoryUuid,
-                      name: 'Neue Gruppe',
-                    });
-                  } catch (error) {
-                    // Error handled by handleCreateGroup
-                  }
+                  setCreatingGroup(true);
                 }
               }}
               onEditGroup={(group) => setEditingGroup(group)}
@@ -430,6 +424,7 @@ export const PromptManagement: React.FC = () => {
               onReorderGroups={handleReorderGroups}
               onCreatePrompt={(groupUuid) => setCreatingPrompt(groupUuid)}
               onEditPrompt={(prompt) => setEditingPrompt(prompt)}
+              onUpdatePrompt={handleUpdatePrompt}
               onDeletePrompt={handleDeletePrompt}
               onReorderPrompts={handleReorderPrompts}
               onCopyPrompt={handleCopyPrompt}
@@ -487,14 +482,25 @@ export const PromptManagement: React.FC = () => {
         />
       )}
 
-      {editingGroup && (
+      {(editingGroup || creatingGroup) && (
         <GroupEditorModal
           group={editingGroup}
+          categoryUuid={selectedCategoryUuid}
           onSave={async (payload) => {
-            await handleUpdateGroup(editingGroup.uuid, payload);
+            if (editingGroup) {
+              // Update
+              await handleUpdateGroup(editingGroup.uuid, payload as UpdateGroupPayload);
+            } else {
+              // Create
+              await handleCreateGroup(payload as CreateGroupPayload);
+            }
             setEditingGroup(null);
+            setCreatingGroup(false);
           }}
-          onClose={() => setEditingGroup(null)}
+          onClose={() => {
+            setEditingGroup(null);
+            setCreatingGroup(false);
+          }}
         />
       )}
 

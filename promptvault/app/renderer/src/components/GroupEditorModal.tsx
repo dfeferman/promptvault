@@ -1,19 +1,21 @@
 // File: app/renderer/src/components/GroupEditorModal.tsx
 
 import React, { useState, useEffect } from 'react';
-import type { Group, UpdateGroupPayload } from '../types';
+import type { Group, UpdateGroupPayload, CreateGroupPayload } from '../types';
 
 interface GroupEditorModalProps {
-  group: Group;
-  onSave: (payload: UpdateGroupPayload) => Promise<void>;
+  group: Group | null;
+  categoryUuid?: string;
+  onSave: (payload: UpdateGroupPayload | CreateGroupPayload) => Promise<void>;
   onClose: () => void;
 }
 
 /**
- * Modal zum Bearbeiten von Gruppen
+ * Modal zum Erstellen und Bearbeiten von Gruppen
  */
 export const GroupEditorModal: React.FC<GroupEditorModalProps> = ({
   group,
+  categoryUuid,
   onSave,
   onClose,
 }) => {
@@ -23,8 +25,13 @@ export const GroupEditorModal: React.FC<GroupEditorModalProps> = ({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setName(group.name);
-    setDescription(group.description || '');
+    if (group) {
+      setName(group.name);
+      setDescription(group.description || '');
+    } else {
+      setName('');
+      setDescription('');
+    }
     setError(null);
   }, [group]);
 
@@ -39,7 +46,17 @@ export const GroupEditorModal: React.FC<GroupEditorModalProps> = ({
 
     try {
       setSaving(true);
-      await onSave({ name: name.trim(), description: description.trim() || undefined });
+      if (group) {
+        // Update
+        await onSave({ name: name.trim(), description: description.trim() || undefined } as UpdateGroupPayload);
+      } else {
+        // Create
+        if (!categoryUuid) {
+          setError('Kategorie-UUID fehlt');
+          return;
+        }
+        await onSave({ category_uuid: categoryUuid, name: name.trim(), description: description.trim() || undefined } as CreateGroupPayload);
+      }
       onClose();
     } catch (err: any) {
       setError(err.message || 'Fehler beim Speichern');
@@ -52,7 +69,7 @@ export const GroupEditorModal: React.FC<GroupEditorModalProps> = ({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Gruppe bearbeiten</h2>
+          <h2 className="modal-title">{group ? 'Gruppe bearbeiten' : 'Neue Gruppe'}</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
