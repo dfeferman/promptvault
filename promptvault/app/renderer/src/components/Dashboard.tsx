@@ -21,7 +21,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectMode }) => {
         <div className="dashboard-cards">
           <div className="dashboard-card" onClick={() => onSelectMode('existing')}>
             <div className="dashboard-card-icon">📝</div>
-            <h2 className="dashboard-card-title">Prompts Allgemein</h2>
+            <h2 className="dashboard-card-title">Meine Prompts</h2>
             <p className="dashboard-card-description">
               Verwende die klassische Prompt-Verwaltung mit Suche, Tags und Kategorien
             </p>

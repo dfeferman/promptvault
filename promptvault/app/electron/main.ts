@@ -3,41 +3,15 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import {
-  initDatabase,
-  getDbPath,
-  createPrompt,
-  updatePrompt,
-  deletePrompt,
-  getPrompt,
-  listPrompts,
-  searchPrompts,
-  exportAllPrompts,
-  importPrompts,
-  // Prompt Management Module
-  createCategory,
-  updateCategory,
-  deleteCategory,
-  getCategory,
-  listCategories,
-  createGroup,
-  updateGroup,
-  deleteGroup,
-  getGroup,
-  listGroups,
-  reorderGroups,
-  createManagementPrompt,
-  updateManagementPrompt,
-  deleteManagementPrompt,
-  getManagementPrompt,
-  listManagementPrompts,
-  reorderManagementPrompts,
-  createPromptResult,
-  updatePromptResult,
-  deletePromptResult,
-  getPromptResult,
-  listPromptResults,
-} from './db';
+import * as dotenv from 'dotenv';
+
+// Lade .env Datei (falls vorhanden)
+dotenv.config();
+
+// Supabase-Imports
+import { initSupabase, testConnection, getDbPath } from './supabase-config';
+import * as db from './db-supabase';
+import { migrateToSupabase } from './migrate-to-supabase';
 import type {
   ApiResponse,
   CreatePromptPayload,
@@ -103,15 +77,24 @@ function createWindow(): void {
 /**
  * App-Lifecycle: Initialisierung
  */
-app.whenReady().then(() => {
-  console.log('[Main] App ready, initializing database...');
+app.whenReady().then(async () => {
+  console.log('[Main] App ready, initializing Supabase...');
   
   try {
-    initDatabase();
-    console.log('[Main] Database initialized at:', getDbPath());
-  } catch (error) {
-    console.error('[Main] Database initialization failed:', error);
-    dialog.showErrorBox('Datenbankfehler', 'Die Datenbank konnte nicht initialisiert werden.');
+    initSupabase();
+    const connected = await testConnection();
+    
+    if (!connected) {
+      throw new Error('Supabase-Verbindung fehlgeschlagen');
+    }
+    
+    console.log('[Main] Supabase connected successfully');
+  } catch (error: any) {
+    console.error('[Main] Supabase initialization failed:', error);
+    dialog.showErrorBox(
+      'Supabase-Fehler',
+      `Die Verbindung zu Supabase konnte nicht hergestellt werden:\n\n${error.message}\n\nBitte prüfen Sie Ihre Konfiguration.`
+    );
     app.quit();
     return;
   }
@@ -141,7 +124,7 @@ function registerIpcHandlers(): void {
     const requestId = Math.random().toString(36).substring(7);
     console.log(`[IPC:${requestId}] prompt:create called:`, { title: payload.title });
     try {
-      const prompt = createPrompt(payload);
+      const prompt = await db.createPrompt(payload);
       console.log(`[IPC:${requestId}] prompt:create success:`, { uuid: prompt.uuid });
       return { success: true, data: prompt };
     } catch (error: any) {
@@ -161,7 +144,7 @@ function registerIpcHandlers(): void {
     const requestId = Math.random().toString(36).substring(7);
     console.log(`[IPC:${requestId}] prompt:update called:`, { uuid, fields: Object.keys(payload) });
     try {
-      const prompt = updatePrompt(uuid, payload);
+      const prompt = await db.updatePrompt(uuid, payload);
       console.log(`[IPC:${requestId}] prompt:update success:`, { uuid: prompt.uuid });
       return { success: true, data: prompt };
     } catch (error: any) {
@@ -181,7 +164,7 @@ function registerIpcHandlers(): void {
     const requestId = Math.random().toString(36).substring(7);
     console.warn(`[IPC:${requestId}] prompt:delete called:`, { uuid });
     try {
-      const result = deletePrompt(uuid);
+      const result = await db.deletePrompt(uuid);
       console.warn(`[IPC:${requestId}] prompt:delete success:`, { uuid });
       return { success: true, data: result };
     } catch (error: any) {
@@ -199,7 +182,7 @@ function registerIpcHandlers(): void {
   // GET
   ipcMain.handle('prompt:get', async (_, uuid: string): Promise<ApiResponse<Prompt>> => {
     try {
-      const prompt = getPrompt(uuid);
+      const prompt = await db.getPrompt(uuid);
       if (!prompt) {
         return {
           success: false,
@@ -228,7 +211,7 @@ function registerIpcHandlers(): void {
     const startTime = Date.now();
     console.debug(`[IPC:${requestId}] prompt:list called:`, params);
     try {
-      const prompts = listPrompts(params);
+      const prompts = await db.listPrompts(params);
       const duration = Date.now() - startTime;
       console.log(`[IPC:${requestId}] prompt:list success:`, { count: prompts.length, duration: `${duration}ms` });
       return { success: true, data: prompts };
@@ -247,7 +230,7 @@ function registerIpcHandlers(): void {
   // SEARCH
   ipcMain.handle('prompt:search', async (_, params: SearchPromptsParams): Promise<ApiResponse<Prompt[]>> => {
     try {
-      const prompts = searchPrompts(params);
+      const prompts = await db.searchPrompts(params);
       return { success: true, data: prompts };
     } catch (error: any) {
       console.error('[IPC] prompt:search error:', error);
@@ -277,7 +260,7 @@ function registerIpcHandlers(): void {
         return { success: false, error: { code: 'CANCELLED', message: 'Export abgebrochen' } };
       }
 
-      const prompts = exportAllPrompts();
+      const prompts = await db.exportAllPrompts();
       fs.writeFileSync(result.filePath, JSON.stringify(prompts, null, 2), 'utf-8');
 
       console.log(`[IPC:${requestId}] prompt:export success:`, { filePath: result.filePath, count: prompts.length });
@@ -323,7 +306,7 @@ function registerIpcHandlers(): void {
         };
       }
 
-      const stats = importPrompts(prompts);
+      const stats = await db.importPrompts(prompts);
       return { success: true, data: stats };
     } catch (error: any) {
       console.error('[IPC] prompt:import error:', error);
@@ -337,15 +320,10 @@ function registerIpcHandlers(): void {
     }
   });
 
-  // REVEAL DB LOCATION
+  // REVEAL DB LOCATION (Für Supabase nicht mehr relevant, aber für Kompatibilität)
   ipcMain.handle('prompt:reveal-db', async (): Promise<ApiResponse<string>> => {
     try {
       const dbPath = getDbPath();
-      const dbDir = path.dirname(dbPath);
-      
-      // Öffne Verzeichnis im Datei-Explorer
-      shell.showItemInFolder(dbPath);
-      
       return { success: true, data: dbPath };
     } catch (error: any) {
       console.error('[IPC] prompt:reveal-db error:', error);
@@ -359,13 +337,30 @@ function registerIpcHandlers(): void {
     }
   });
 
+  // MIGRATION: SQLite -> Supabase
+  ipcMain.handle('migrate:to-supabase', async (): Promise<ApiResponse<any>> => {
+    try {
+      const result = await migrateToSupabase();
+      return { success: true, data: result };
+    } catch (error: any) {
+      console.error('[IPC] migrate:to-supabase error:', error);
+      return {
+        success: false,
+        error: {
+          code: 'MIGRATION_FAILED',
+          message: error.message,
+        },
+      };
+    }
+  });
+
   // ============================================================================
   // PROMPT MANAGEMENT MODULE - Categories IPC Handlers
   // ============================================================================
 
   ipcMain.handle('category:create', async (_, payload: CreateCategoryPayload): Promise<ApiResponse<Category>> => {
     try {
-      const category = createCategory(payload);
+      const category = await db.createCategory(payload);
       return { success: true, data: category };
     } catch (error: any) {
       console.error('[IPC] category:create error:', error);
@@ -381,7 +376,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('category:update', async (_, uuid: string, payload: UpdateCategoryPayload): Promise<ApiResponse<Category>> => {
     try {
-      const category = updateCategory(uuid, payload);
+      const category = await db.updateCategory(uuid, payload);
       return { success: true, data: category };
     } catch (error: any) {
       console.error('[IPC] category:update error:', error);
@@ -397,7 +392,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('category:delete', async (_, uuid: string): Promise<ApiResponse<boolean>> => {
     try {
-      const result = deleteCategory(uuid);
+      const result = await db.deleteCategory(uuid);
       return { success: true, data: result };
     } catch (error: any) {
       console.error('[IPC] category:delete error:', error);
@@ -413,7 +408,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('category:get', async (_, uuid: string): Promise<ApiResponse<Category>> => {
     try {
-      const category = getCategory(uuid);
+      const category = await db.getCategory(uuid);
       if (!category) {
         return {
           success: false,
@@ -438,7 +433,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('category:list', async (): Promise<ApiResponse<Category[]>> => {
     try {
-      const categories = listCategories();
+      const categories = await db.listCategories();
       return { success: true, data: categories };
     } catch (error: any) {
       console.error('[IPC] category:list error:', error);
@@ -458,7 +453,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('group:create', async (_, payload: CreateGroupPayload): Promise<ApiResponse<Group>> => {
     try {
-      const group = createGroup(payload);
+      const group = await db.createGroup(payload);
       return { success: true, data: group };
     } catch (error: any) {
       console.error('[IPC] group:create error:', error);
@@ -474,7 +469,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('group:update', async (_, uuid: string, payload: UpdateGroupPayload): Promise<ApiResponse<Group>> => {
     try {
-      const group = updateGroup(uuid, payload);
+      const group = await db.updateGroup(uuid, payload);
       return { success: true, data: group };
     } catch (error: any) {
       console.error('[IPC] group:update error:', error);
@@ -490,7 +485,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('group:delete', async (_, uuid: string): Promise<ApiResponse<boolean>> => {
     try {
-      const result = deleteGroup(uuid);
+      const result = await db.deleteGroup(uuid);
       return { success: true, data: result };
     } catch (error: any) {
       console.error('[IPC] group:delete error:', error);
@@ -506,7 +501,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('group:get', async (_, uuid: string): Promise<ApiResponse<Group>> => {
     try {
-      const group = getGroup(uuid);
+      const group = await db.getGroup(uuid);
       if (!group) {
         return {
           success: false,
@@ -531,7 +526,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('group:list', async (_, category_uuid: string): Promise<ApiResponse<Group[]>> => {
     try {
-      const groups = listGroups(category_uuid);
+      const groups = await db.listGroups(category_uuid);
       return { success: true, data: groups };
     } catch (error: any) {
       console.error('[IPC] group:list error:', error);
@@ -547,7 +542,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('group:reorder', async (_, payload: ReorderItemsPayload): Promise<ApiResponse<boolean>> => {
     try {
-      const result = reorderGroups(payload);
+      const result = await db.reorderGroups(payload);
       return { success: true, data: result };
     } catch (error: any) {
       console.error('[IPC] group:reorder error:', error);
@@ -567,7 +562,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('management-prompt:create', async (_, payload: CreateManagementPromptPayload): Promise<ApiResponse<ManagementPrompt>> => {
     try {
-      const prompt = createManagementPrompt(payload);
+      const prompt = await db.createManagementPrompt(payload);
       return { success: true, data: prompt };
     } catch (error: any) {
       console.error('[IPC] management-prompt:create error:', error);
@@ -583,7 +578,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('management-prompt:update', async (_, uuid: string, payload: UpdateManagementPromptPayload): Promise<ApiResponse<ManagementPrompt>> => {
     try {
-      const prompt = updateManagementPrompt(uuid, payload);
+      const prompt = await db.updateManagementPrompt(uuid, payload);
       return { success: true, data: prompt };
     } catch (error: any) {
       console.error('[IPC] management-prompt:update error:', error);
@@ -599,7 +594,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('management-prompt:delete', async (_, uuid: string): Promise<ApiResponse<boolean>> => {
     try {
-      const result = deleteManagementPrompt(uuid);
+      const result = await db.deleteManagementPrompt(uuid);
       return { success: true, data: result };
     } catch (error: any) {
       console.error('[IPC] management-prompt:delete error:', error);
@@ -615,7 +610,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('management-prompt:get', async (_, uuid: string): Promise<ApiResponse<ManagementPrompt>> => {
     try {
-      const prompt = getManagementPrompt(uuid);
+      const prompt = await db.getManagementPrompt(uuid);
       if (!prompt) {
         return {
           success: false,
@@ -640,7 +635,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('management-prompt:list', async (_, group_uuid: string): Promise<ApiResponse<ManagementPrompt[]>> => {
     try {
-      const prompts = listManagementPrompts(group_uuid);
+      const prompts = await db.listManagementPrompts(group_uuid);
       return { success: true, data: prompts };
     } catch (error: any) {
       console.error('[IPC] management-prompt:list error:', error);
@@ -656,7 +651,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('management-prompt:reorder', async (_, payload: ReorderItemsPayload): Promise<ApiResponse<boolean>> => {
     try {
-      const result = reorderManagementPrompts(payload);
+      const result = await db.reorderManagementPrompts(payload);
       return { success: true, data: result };
     } catch (error: any) {
       console.error('[IPC] management-prompt:reorder error:', error);
@@ -676,7 +671,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('prompt-result:create', async (_, payload: CreatePromptResultPayload): Promise<ApiResponse<PromptResult>> => {
     try {
-      const result = createPromptResult(payload);
+      const result = await db.createPromptResult(payload);
       return { success: true, data: result };
     } catch (error: any) {
       console.error('[IPC] prompt-result:create error:', error);
@@ -692,7 +687,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('prompt-result:update', async (_, uuid: string, payload: UpdatePromptResultPayload): Promise<ApiResponse<PromptResult>> => {
     try {
-      const result = updatePromptResult(uuid, payload);
+      const result = await db.updatePromptResult(uuid, payload);
       return { success: true, data: result };
     } catch (error: any) {
       console.error('[IPC] prompt-result:update error:', error);
@@ -708,7 +703,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('prompt-result:delete', async (_, uuid: string): Promise<ApiResponse<boolean>> => {
     try {
-      const result = deletePromptResult(uuid);
+      const result = await db.deletePromptResult(uuid);
       return { success: true, data: result };
     } catch (error: any) {
       console.error('[IPC] prompt-result:delete error:', error);
@@ -724,7 +719,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('prompt-result:get', async (_, uuid: string): Promise<ApiResponse<PromptResult>> => {
     try {
-      const result = getPromptResult(uuid);
+      const result = await db.getPromptResult(uuid);
       if (!result) {
         return {
           success: false,
@@ -749,7 +744,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('prompt-result:list', async (_, prompt_uuid: string): Promise<ApiResponse<PromptResult[]>> => {
     try {
-      const results = listPromptResults(prompt_uuid);
+      const results = await db.listPromptResults(prompt_uuid);
       return { success: true, data: results };
     } catch (error: any) {
       console.error('[IPC] prompt-result:list error:', error);
