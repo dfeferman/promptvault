@@ -49,7 +49,39 @@ export function initDatabase(): Database.Database {
   
   runMigrations(db);
   
+  // Prüfe und füge global_variables Spalte hinzu, falls sie nicht existiert
+  ensureGlobalVariablesColumn(db);
+  
   return db;
+}
+
+/**
+ * Stellt sicher, dass die global_variables Spalte in der groups Tabelle existiert
+ */
+function ensureGlobalVariablesColumn(database: Database.Database): void {
+  try {
+    const columnCheck = database.prepare(`
+      SELECT COUNT(*) as count 
+      FROM pragma_table_info('groups') 
+      WHERE name = 'global_variables'
+    `).get() as { count: number };
+    
+    if (columnCheck.count === 0) {
+      console.log('[DB] Column global_variables does not exist, adding it...');
+      database.prepare('ALTER TABLE groups ADD COLUMN global_variables TEXT DEFAULT \'{}\'').run();
+      // Aktualisiere bestehende Einträge
+      database.prepare('UPDATE groups SET global_variables = \'{}\' WHERE global_variables IS NULL').run();
+      console.log('[DB] Column global_variables added successfully');
+    } else {
+      console.log('[DB] Column global_variables already exists');
+    }
+  } catch (error: any) {
+    console.error('[DB] Error checking/adding global_variables column:', error);
+    // Ignoriere Fehler, wenn Spalte bereits existiert
+    if (!error.message || !error.message.includes('duplicate column name')) {
+      throw error;
+    }
+  }
 }
 
 /**
@@ -99,8 +131,37 @@ function runMigrations(database: Database.Database): void {
     const migrationPath = path.join(migrationsDir, file);
     const sql = fs.readFileSync(migrationPath, 'utf-8');
     
-    database.exec(sql);
-    console.log(`[DB] Migration ${file} completed`);
+    try {
+      // Für Migration 003: Prüfe ob Spalte bereits existiert
+      if (version === 3) {
+        const columnCheck = database.prepare(`
+          SELECT COUNT(*) as count 
+          FROM pragma_table_info('groups') 
+          WHERE name = 'global_variables'
+        `).get() as { count: number };
+        
+        if (columnCheck.count === 0) {
+          console.log('[DB] Adding global_variables column to groups table');
+          database.exec(sql);
+        } else {
+          console.log('[DB] Column global_variables already exists, skipping ALTER TABLE');
+          // Nur Schema-Version aktualisieren
+          database.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, datetime("now"))').run(version);
+        }
+      } else {
+        database.exec(sql);
+      }
+      console.log(`[DB] Migration ${file} completed`);
+    } catch (error: any) {
+      // Wenn Spalte bereits existiert, ist das OK
+      if (error.message && error.message.includes('duplicate column name')) {
+        console.log(`[DB] Column already exists, updating schema version only`);
+        database.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, datetime("now"))').run(version);
+      } else {
+        console.error(`[DB] Migration ${file} failed:`, error);
+        throw error;
+      }
+    }
   }
 }
 
@@ -606,9 +667,15 @@ export function createGroup(payload: CreateGroupPayload): Group {
     displayOrder = (maxOrder.max_order ?? -1) + 1;
   }
   
+  // Konvertiere global_variables zu JSON string
+  const globalVariablesJson = payload.global_variables 
+    ? JSON.stringify(payload.global_variables) 
+    : '{}';
+  console.log('[DB] Creating group with global_variables:', { name: payload.name, global_variables: globalVariablesJson });
+
   const stmt = database.prepare(`
-    INSERT INTO groups (uuid, category_uuid, name, description, display_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO groups (uuid, category_uuid, name, description, display_order, global_variables, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   stmt.run(
@@ -617,6 +684,7 @@ export function createGroup(payload: CreateGroupPayload): Group {
     payload.name.trim(),
     payload.description?.trim() || null,
     displayOrder,
+    globalVariablesJson,
     now,
     now
   );
@@ -650,6 +718,13 @@ export function updateGroup(uuid: string, payload: UpdateGroupPayload): Group {
   if (payload.display_order !== undefined) {
     updates.push('display_order = ?');
     values.push(payload.display_order);
+  }
+  if (payload.global_variables !== undefined) {
+    updates.push('global_variables = ?');
+    // Speichere als JSON string, auch wenn leer (wird als '{}' gespeichert)
+    const globalVarsJson = JSON.stringify(payload.global_variables || {});
+    values.push(globalVarsJson);
+    console.log('[DB] Updating global_variables:', { uuid, global_variables: globalVarsJson });
   }
   
   if (updates.length === 0) {

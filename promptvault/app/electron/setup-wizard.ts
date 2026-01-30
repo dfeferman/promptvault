@@ -209,7 +209,7 @@ export async function showSetupWizard(mainWindow: BrowserWindow | null): Promise
     // IPC-Handler für Setup
     const { ipcMain } = require('electron');
     
-    ipcMain.once('setup:save-config', async (_, config: { url: string; anonKey: string }) => {
+    ipcMain.once('setup:save-config', async (_event: Electron.IpcMainEvent, config: { url: string; anonKey: string }) => {
       try {
         saveSupabaseConfig(config, false); // Plain für erste Einrichtung
         setupWindow.close();

@@ -208,13 +208,21 @@ class PromptAPI {
   }
 
   async updateGroup(uuid: string, payload: UpdateGroupPayload): Promise<Group> {
-    console.log('[API] Updating group:', { uuid, fields: Object.keys(payload) });
+    console.log('[API] Updating group:', { 
+      uuid, 
+      fields: Object.keys(payload),
+      hasGlobalVars: !!payload.global_variables,
+      globalVars: payload.global_variables
+    });
     const response = await this.api.updateGroup(uuid, payload);
     if (!response.success || !response.data) {
       console.error('[API] Failed to update group:', { uuid, error: response.error });
       throw new Error(response.error?.message || 'Failed to update group');
     }
-    console.log('[API] Group updated successfully:', { uuid: response.data.uuid });
+    console.log('[API] Group updated successfully:', { 
+      uuid: response.data.uuid,
+      global_variables: response.data.global_variables
+    });
     return response.data;
   }
 

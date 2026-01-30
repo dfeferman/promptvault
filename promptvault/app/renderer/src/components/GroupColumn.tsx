@@ -50,6 +50,21 @@ export const GroupColumn: React.FC<GroupColumnProps> = ({
 
   const sortedPrompts = [...prompts].sort((a, b) => a.display_order - b.display_order);
 
+  // Schließe Menü beim Klicken außerhalb
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.group-column-menu') && showMenu) {
+        setShowMenu(false);
+      }
+    };
+
+    if (showMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showMenu]);
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setDraggedOver(true);
@@ -208,6 +223,21 @@ const PromptCard: React.FC<PromptCardProps> = ({
     e.dataTransfer.effectAllowed = 'move';
   };
 
+  // Schließe Menü beim Klicken außerhalb
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.prompt-card-menu') && showMenu) {
+        setShowMenu(false);
+      }
+    };
+
+    if (showMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showMenu]);
+
   return (
     <div
       className={`prompt-card ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''}`}
@@ -229,19 +259,31 @@ const PromptCard: React.FC<PromptCardProps> = ({
           </button>
           {showMenu && (
             <div className="prompt-card-menu-dropdown" onClick={(e) => e.stopPropagation()}>
-              <button className="prompt-card-menu-item" onClick={onEdit}>
+              <button 
+                className="prompt-card-menu-item" 
+                onClick={() => {
+                  setShowMenu(false);
+                  onEdit();
+                }}
+              >
                 ✏️ Bearbeiten
               </button>
-              <button className="prompt-card-menu-item" onClick={onCopy}>
+              <button 
+                className="prompt-card-menu-item" 
+                onClick={async () => {
+                  setShowMenu(false);
+                  await onCopy();
+                }}
+              >
                 📋 Kopieren
               </button>
               <button
                 className="prompt-card-menu-item prompt-card-menu-item-danger"
                 onClick={async () => {
+                  setShowMenu(false);
                   if (confirm(`Prompt "${prompt.name}" wirklich löschen?`)) {
                     await onDelete();
                   }
-                  setShowMenu(false);
                 }}
               >
                 🗑️ Löschen

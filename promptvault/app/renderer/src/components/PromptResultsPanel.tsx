@@ -1,11 +1,13 @@
 // File: app/renderer/src/components/PromptResultsPanel.tsx
 
 import React, { useState } from 'react';
-import type { PromptResult, ManagementPrompt, CreatePromptResultPayload, UpdatePromptResultPayload } from '../types';
+import type { PromptResult, ManagementPrompt, CreatePromptResultPayload, UpdatePromptResultPayload, Group } from '../types';
 import { PromptResultEditorModal } from './PromptResultEditorModal';
+import { replaceVariables } from '../utils/variableReplacer';
 
 interface PromptResultsPanelProps {
   prompt: ManagementPrompt | null;
+  group: Group | null;
   results: PromptResult[];
   onAddResult: () => void;
   onEditResult: (result: PromptResult) => void;
@@ -20,6 +22,7 @@ interface PromptResultsPanelProps {
  */
 export const PromptResultsPanel: React.FC<PromptResultsPanelProps> = ({
   prompt,
+  group,
   results,
   onAddResult,
   onEditResult,
@@ -30,21 +33,33 @@ export const PromptResultsPanel: React.FC<PromptResultsPanelProps> = ({
 }) => {
   const [expandedResultUuid, setExpandedResultUuid] = useState<string | null>(null);
 
+  // Funktion zum Schließen aller Dropdown-Menüs
+  const closeAllDropdowns = () => {
+    document.querySelectorAll('.download-dropdown-menu').forEach((menu) => {
+      (menu as HTMLElement).style.display = 'none';
+    });
+  };
+
   // Schließe Dropdown-Menüs beim Klicken außerhalb
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (!target.closest('.prompt-result-download-dropdown')) {
-        const dropdowns = document.querySelectorAll('.download-dropdown-menu');
-        dropdowns.forEach(dropdown => {
-          (dropdown as HTMLElement).style.display = 'none';
-        });
+        closeAllDropdowns();
       }
     };
 
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  // Schließe alle Dropdown-Menüs wenn das Bearbeiten-Modal geöffnet oder geschlossen wird
+  React.useEffect(() => {
+    if (editingResult !== null && editingResult !== undefined) {
+      // Modal wird geöffnet
+      closeAllDropdowns();
+    }
+  }, [editingResult]);
 
   if (!prompt) {
     return (
@@ -100,6 +115,22 @@ export const PromptResultsPanel: React.FC<PromptResultsPanelProps> = ({
     console.log('[PromptResultsPanel] Download completed:', { filename });
   };
 
+  // Ersetze Platzhalter im Prompt-Inhalt
+  const promptContentWithVariables = group
+    ? replaceVariables(prompt.content, group.global_variables)
+    : prompt.content;
+
+  // Funktion zum Kopieren von Text
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // Optional: Notification anzeigen
+      console.log('[PromptResultsPanel] Text in Zwischenablage kopiert');
+    } catch (error) {
+      console.error('[PromptResultsPanel] Fehler beim Kopieren:', error);
+    }
+  };
+
   return (
     <div className="prompt-results-panel">
       <div className="prompt-results-header">
@@ -113,6 +144,40 @@ export const PromptResultsPanel: React.FC<PromptResultsPanelProps> = ({
       </div>
 
       <div className="prompt-results-content">
+        {/* Prompt-Inhalt mit ersetzten Variablen anzeigen */}
+        <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '4px', border: '1px solid #e0e0e0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ fontSize: '12px', color: '#666', fontWeight: '500' }}>
+              Prompt-Inhalt {group && group.global_variables ? '(mit Variablen ersetzt)' : ''}:
+            </div>
+            <button
+              className="btn btn-secondary btn-small"
+              onClick={() => copyToClipboard(promptContentWithVariables)}
+              title="In Zwischenablage kopieren"
+              style={{ fontSize: '11px', padding: '4px 8px' }}
+            >
+              📋 Kopieren
+            </button>
+          </div>
+          <pre 
+            style={{ 
+              whiteSpace: 'pre-wrap', 
+              wordBreak: 'break-word', 
+              fontSize: '13px', 
+              lineHeight: '1.5',
+              margin: 0,
+              color: '#333',
+              userSelect: 'text',
+              cursor: 'text'
+            }}
+            onClick={(e) => {
+              // Ermöglicht Textauswahl
+              e.stopPropagation();
+            }}
+          >
+            {promptContentWithVariables}
+          </pre>
+        </div>
         {results.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📋</div>
@@ -192,7 +257,10 @@ export const PromptResultsPanel: React.FC<PromptResultsPanelProps> = ({
                     </div>
                     <button
                       className="btn btn-icon"
-                      onClick={() => onEditResult(result)}
+                      onClick={() => {
+                        closeAllDropdowns();
+                        onEditResult(result);
+                      }}
                       title="Bearbeiten"
                     >
                       ✏️
@@ -212,13 +280,43 @@ export const PromptResultsPanel: React.FC<PromptResultsPanelProps> = ({
                 </div>
                 {expandedResultUuid === result.uuid && (
                   <div className="prompt-result-content">
-                    <pre className="prompt-result-text">{result.content}</pre>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                      <button
+                        className="btn btn-secondary btn-small"
+                        onClick={() => {
+                          const contentWithVariables = group
+                            ? replaceVariables(result.content, group.global_variables)
+                            : result.content;
+                          copyToClipboard(contentWithVariables);
+                        }}
+                        title="In Zwischenablage kopieren"
+                        style={{ fontSize: '11px', padding: '4px 8px' }}
+                      >
+                        📋 Kopieren
+                      </button>
+                    </div>
+                    <pre 
+                      className="prompt-result-text"
+                      style={{ userSelect: 'text', cursor: 'text' }}
+                      onClick={(e) => {
+                        // Ermöglicht Textauswahl
+                        e.stopPropagation();
+                      }}
+                    >
+                      {group
+                        ? replaceVariables(result.content, group.global_variables)
+                        : result.content}
+                    </pre>
                   </div>
                 )}
                 {expandedResultUuid !== result.uuid && (
                   <div className="prompt-result-preview">
-                    {result.content.substring(0, 150)}
-                    {result.content.length > 150 && '...'}
+                    {group
+                      ? replaceVariables(result.content, group.global_variables).substring(0, 150)
+                      : result.content.substring(0, 150)}
+                    {(group
+                      ? replaceVariables(result.content, group.global_variables).length
+                      : result.content.length) > 150 && '...'}
                   </div>
                 )}
               </div>
@@ -232,9 +330,13 @@ export const PromptResultsPanel: React.FC<PromptResultsPanelProps> = ({
           result={editingResult}
           onSave={async (payload) => {
             await onUpdateResult(editingResult.uuid, payload);
+            closeAllDropdowns();
             onCloseResultEditor();
           }}
-          onClose={onCloseResultEditor}
+          onClose={() => {
+            closeAllDropdowns();
+            onCloseResultEditor();
+          }}
         />
       )}
     </div>

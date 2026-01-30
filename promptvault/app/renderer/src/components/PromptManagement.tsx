@@ -370,6 +370,10 @@ export const PromptManagement: React.FC = () => {
     ? Object.values(promptsByGroup).flat().find(p => p.uuid === selectedPromptUuid)
     : null;
 
+  const selectedGroup = selectedPrompt
+    ? groups.find(g => g.uuid === selectedPrompt.group_uuid) || null
+    : null;
+
   // Show error state if there's an error
   if (error && categories.length === 0 && !loading) {
     return (
@@ -452,6 +456,7 @@ export const PromptManagement: React.FC = () => {
       <div className="prompt-management-results" style={{ width: `${resultsPanelWidth}px`, minWidth: '300px', maxWidth: '800px', backgroundColor: 'white' }}>
         <PromptResultsPanel
           prompt={selectedPrompt || null}
+          group={selectedGroup}
           results={results}
           onAddResult={() => {
             if (selectedPromptUuid) {

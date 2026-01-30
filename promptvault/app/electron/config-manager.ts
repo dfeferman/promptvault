@@ -144,11 +144,11 @@ export function loadSupabaseConfig(): SupabaseConfig {
 /**
  * Speichert die Supabase-Konfiguration (verschlüsselt)
  */
-export function saveSupabaseConfig(config: SupabaseConfig, encrypt: boolean = true): void {
-  const configPath = encrypt ? getConfigPath(true) : getConfigPath(false);
+export function saveSupabaseConfig(config: SupabaseConfig, shouldEncrypt: boolean = true): void {
+  const configPath = shouldEncrypt ? getConfigPath(true) : getConfigPath(false);
   
   try {
-    if (encrypt) {
+    if (shouldEncrypt) {
       const key = getEncryptionKey();
       const encrypted = encrypt(JSON.stringify(config), key);
       fs.writeFileSync(configPath, encrypted, 'utf-8');

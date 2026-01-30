@@ -75,6 +75,7 @@ interface Group {
   name: string;
   description?: string;
   display_order: number;
+  global_variables?: string; // JSON string: Record<string, string>
   created_at: string;
   updated_at: string;
 }
@@ -114,12 +115,14 @@ interface CreateGroupPayload {
   name: string;
   description?: string;
   display_order?: number;
+  global_variables?: Record<string, string>; // Key-Value Paare für globale Variablen
 }
 
 interface UpdateGroupPayload {
   name?: string;
   description?: string;
   display_order?: number;
+  global_variables?: Record<string, string>; // Key-Value Paare für globale Variablen
 }
 
 interface CreateManagementPromptPayload {

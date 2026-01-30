@@ -469,7 +469,17 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('group:update', async (_, uuid: string, payload: UpdateGroupPayload): Promise<ApiResponse<Group>> => {
     try {
+      console.log('[IPC] group:update called:', { 
+        uuid, 
+        payloadFields: Object.keys(payload),
+        hasGlobalVars: !!payload.global_variables,
+        globalVars: payload.global_variables
+      });
       const group = await db.updateGroup(uuid, payload);
+      console.log('[IPC] group:update result:', { 
+        uuid: group.uuid, 
+        global_variables: group.global_variables 
+      });
       return { success: true, data: group };
     } catch (error: any) {
       console.error('[IPC] group:update error:', error);
