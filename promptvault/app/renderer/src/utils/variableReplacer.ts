@@ -46,3 +46,4 @@ export function extractPlaceholders(content: string): string[] {
   }
   return matches.map(match => match.replace(/\{\{|\}\}/g, ''));
 }
+

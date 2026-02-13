@@ -15,3 +15,4 @@ UPDATE groups SET global_variables = '{}' WHERE global_variables IS NULL;
 
 -- Schema Version aktualisieren
 INSERT INTO schema_version (version, applied_at) VALUES (3, datetime('now'));
+
